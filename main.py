@@ -8,9 +8,24 @@ def main_page(page: ft.Page):
 
     task_list = ft.Column()
 
-    def view_task(task_id, task_text, task_date): 
+    filter_type = 'all'
+
+    def load_tasks():
+        task_list.controls.clear()
+        for task_id, task, task_date, completed in main_db.get_tasks(filter_type):
+            task_list.controls.append(
+                view_task(task_id=task_id, task_text=task,task_date=task_date, completed=completed)
+            )
+        page.update()
+
+    def view_task(task_id, task_text, task_date, completed=None): 
         task_field = ft.TextField(value=task_text, expand=True, read_only=True)
-        date_label = ft.Text(value=task_date, size=11, color=ft.Colors.GREY)
+        date_label = ft.Text(value=task_date or '', size=11, color=ft.Colors.GREY)
+
+        checkbox = ft.Checkbox(
+            value=bool(completed), 
+            on_change=lambda e: toggle_task(task_id=task_id, is_completed=e.control.value)
+            )
 
         def save_edit(_):
             main_db.update_task(task_id=task_id, new_task=task_field.value)
@@ -26,11 +41,8 @@ def main_page(page: ft.Page):
         edit_button = ft.IconButton(icon=ft.Icons.EDIT, on_click=enable_edit)
 
         def remove_task(_):
-            main_db.delete_task(task_id)
-            task_list.controls = [
-                row for row in task_list.controls
-                if row != task_row
-            ]
+            main_db.delete_task_by_id(task_id)
+            task_list.controls.remove(task_row)
             page.update()
 
         delete_button = ft.IconButton(
@@ -44,8 +56,13 @@ def main_page(page: ft.Page):
             edit_button,
             save_button,
             delete_button,
+            checkbox
         ])
         return task_row
+
+    def toggle_task(task_id, is_completed):
+        main_db.update_task(task_id=task_id, completed=int(is_completed))
+        page.update()
 
     def add_task_flet(_):
         if task_input.value:
@@ -57,11 +74,39 @@ def main_page(page: ft.Page):
             )
             page.update()
 
-    task_input = ft.TextField(label='Введите задачу', on_submit=add_task_flet)
-    add_button = ft.Button("ADD", icon=ft.Icons.ADD, on_click=add_task_flet)
+    task_input = ft.TextField(label='Введите задачу', on_submit=add_task_flet, expand=True)
+    
+    def set_filter(f):
+        nonlocal filter_type
+        filter_type = f
+        load_tasks()
 
-    page.add(ft.Row([task_input, add_button]), task_list)
+    def clear_completed(_):
+        main_db.clear_completed()
+        load_tasks()
+    
+    add_button = ft.IconButton(icon=ft.Icons.ADD, on_click=add_task_flet)
 
+    filter_buttons = ft.Row([
+        ft.ElevatedButton('Все задачи', on_click=lambda e: set_filter('all')),
+        ft.ElevatedButton('В работе', on_click=lambda e: set_filter('uncompleted')),
+        ft.ElevatedButton('Готово ✅', on_click=lambda e: set_filter('completed')), 
+        ft.ElevatedButton(
+            'Очистить выполненные 🗑',
+            on_click=clear_completed,
+            color=ft.Colors.WHITE,
+            bgcolor=ft.Colors.RED_400,
+        ),
+    ], alignment=ft.MainAxisAlignment.SPACE_AROUND)
+
+
+    page.add(
+        ft.Row([task_input, add_button]),
+        filter_buttons,
+        task_list
+    )
+ 
+    load_tasks()
 
 if __name__ == '__main__':
     main_db.init_db()
